@@ -306,10 +306,5 @@ namespace PC_Name_2
                 + "\nFree Disk Space (Gb): " + info.DiskSpace
                 + "\nIP Addresses:\n" + ips;
         }
-
-        private void l_Diskspace_Click(object sender, EventArgs e)
-        {
-
-        }
     }
 }
