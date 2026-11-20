@@ -6,6 +6,7 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -21,152 +22,289 @@ namespace PC_Name_2
         [DllImport("Kernel32.dll")]
         static extern long GetTickCount64();
 
+        // Everything gathered in one go, so it can be collected off the UI thread
+        private class PcInfo
+        {
+            public string PcName = "";
+            public string UserName = "";
+            public string Model = "";
+            public string Serial = "";
+            public string Wifi = "";
+            public string Signal = "";
+            public string LastBoot = "";
+            public string DiskSpace = "";
+            public List<string> IPs = new List<string>();
+        }
+
+        private bool _busy = false;
+
         public Form1()
         {
             InitializeComponent();
         }
 
-        private void Form1_Load(object sender, EventArgs e)
+        private async void Form1_Load(object sender, EventArgs e)
         {
-            DoPCName();
-
             //Stores App Version number on Load
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             this.lblVersion.Text = String.Format(this.lblVersion.Text, version.Major, version.Minor, version.Build, version.Revision);
 
+            await RefreshAsync();
         }
 
-        private void bCopy_Click(object sender, EventArgs e)
+        private async void bCopy_Click(object sender, EventArgs e)
         {
-            Clipboard.SetText(DoPCName());
-        }
-
-        private void b_refresh_Click_1(object sender, EventArgs e)
-        {
-            DoPCName();
-        }
-
-        //Runs on Load and when pressing refresh or copy to clipboard
-        public string DoPCName()
-        {
-            //Get PC Name
-            String q1 = Environment.MachineName;
-            tBPCName.Text = q1;
-           
-            //Get Username
-            String q2 = Environment.UserName;
-            tBUsername.Text = q2;
-
-            //Get DeviceModel
-
-            ManagementClass mc1 = new ManagementClass("Win32_ComputerSystemProduct");
-            //collection to store all management objects
-            ManagementObjectCollection moc1 = mc1.GetInstances();
-            if (moc1.Count != 0)
+            PcInfo info = await RefreshAsync();
+            if (info != null)
             {
-                foreach (ManagementObject mo1 in mc1.GetInstances())
-                {
-                    string IN = (mo1["IdentifyingNumber"]).ToString();
-                    string Name = (mo1["Name"]).ToString();
-                    string Vendor = (mo1["Vendor"]).ToString();
-                    string Version = (mo1["Version"]).ToString();
-                    
-                    // display general system information
-                    if (Vendor.Contains("Dell") ^ Vendor.Contains("HP"))
-                    {
-                        tBModel.Text = Name;
-                        tBSerial.Text = IN;
-                    }
-                    else if (Vendor.Contains("LEN"))
-                    {
-                        tBModel.Text = Version;
-                        tBSerial.Text = IN;
-                    }
-                    else
-                    {
-                        tBModel.Text = "";
-                        tBSerial.Text = "";
-                    }
-                    
-
-                }
+                Clipboard.SetText(BuildCopyText(info));
             }
+        }
+
+        private async void b_refresh_Click_1(object sender, EventArgs e)
+        {
+            await RefreshAsync();
+        }
+
+        // Gathers the info on a background thread, then updates the UI.
+        // Returns null if a refresh is already running.
+        private async Task<PcInfo> RefreshAsync()
+        {
+            if (_busy) return null;
+            _busy = true;
+            bCopy.Enabled = false;
+            b_refresh.Enabled = false;
+            try
+            {
+                PcInfo info = await Task.Run(() => GatherInfo());
+                ApplyInfo(info);
+                return info;
+            }
+            finally
+            {
+                bCopy.Enabled = true;
+                b_refresh.Enabled = true;
+                _busy = false;
+            }
+        }
+
+        // Collects all the information. Does not touch the UI.
+        private PcInfo GatherInfo()
+        {
+            PcInfo info = new PcInfo();
+
+            //Get PC Name and Username
+            info.PcName = Environment.MachineName;
+            info.UserName = Environment.UserName;
+
+            //Get Device Model and Serial
+            GetModelAndSerial(info);
 
             // System Uptime
             DateTime osStartTime = DateTime.Now - new TimeSpan(10000 * GetTickCount64());
-            tBSysBoot.Text = (osStartTime).ToString();
-
-            // Clears the IP List
-            lvIP.Clear();
-            lvIP.View = View.List;
+            info.LastBoot = osStartTime.ToString();
 
             //Get IP Addresses
-            string ips = "";
-            IPAddress[] addresses = Dns.GetHostAddresses(Dns.GetHostName());
-            foreach (IPAddress address in addresses)
-            {
-                //for IPv4 .. if needed :)
-                if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                {
-                    string ip = address.ToString();
-                    lvIP.Items.Add(ip);
-                    ips += ip;
-                    ips += "\n";
-
-                }
-            }
-
-
+            info.IPs = GetIPv4Addresses();
 
             // Show SSID and Signal Strength
-            System.Diagnostics.Process p = new System.Diagnostics.Process();
-            p.StartInfo.FileName = "netsh.exe";
-            p.StartInfo.Arguments = "wlan show interfaces";
-            p.StartInfo.UseShellExecute = false;
-            p.StartInfo.CreateNoWindow = true;
-            p.StartInfo.RedirectStandardOutput = true;
-            p.Start();
+            GetWifi(info);
 
-            string s = p.StandardOutput.ReadToEnd();
+            //Disk Space (the drive Windows is installed on)
             try
             {
-                string s1 = s.Substring(s.IndexOf("SSID"));
-                s1 = s1.Substring(s1.IndexOf(":"));
-                s1 = s1.Substring(2, s1.IndexOf("\n")).Trim();
-                tBwifi.Text = s1;
+                const decimal BytesInGB = 1073741824;
+                string systemDrive = Path.GetPathRoot(Environment.SystemDirectory);
+                DriveInfo dInfo = new DriveInfo(systemDrive);
+                decimal avl = dInfo.AvailableFreeSpace;
+                decimal GB = avl / (BytesInGB);
+                info.DiskSpace = GB.ToString("#.##");
             }
-            catch { tBwifi.Text = "";  }
+            catch { info.DiskSpace = ""; }
 
+            return info;
+        }
+
+        private static string Prop(ManagementBaseObject mo, string name)
+        {
             try
             {
-                string s2 = s.Substring(s.IndexOf("Signal"));
-                s2 = s2.Substring(s2.IndexOf(":"));
-                s2 = s2.Substring(2, s2.IndexOf("\n")).Trim();
-                tBSigStrn.Text = s2;
+                object value = mo[name];
+                return value == null ? "" : value.ToString().Trim();
             }
-            catch { tBSigStrn.Text = ""; }
-            p.WaitForExit();
+            catch { return ""; }
+        }
 
-            //Disk Space
-            const decimal BytesInGB = 1073741824;
-            DriveInfo dInfo = new DriveInfo("C");
-            decimal avl = dInfo.AvailableFreeSpace;
-            decimal GB = avl / (BytesInGB);
-            tBDiskspace.Text = GB.ToString("#.##");
+        private static void GetModelAndSerial(PcInfo info)
+        {
+            try
+            {
+                using (ManagementClass mc = new ManagementClass("Win32_ComputerSystemProduct"))
+                using (ManagementObjectCollection moc = mc.GetInstances())
+                {
+                    foreach (ManagementObject mo in moc)
+                    {
+                        string serial = Prop(mo, "IdentifyingNumber");
+                        string name = Prop(mo, "Name");
+                        string vendor = Prop(mo, "Vendor");
+                        string version = Prop(mo, "Version");
 
-            // OS Version
-            /*
-                RegistryKey registryKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+                        // Lenovo keeps the friendly model name in Version, Dell and HP use Name
+                        bool isLenovo = vendor.IndexOf("LEN", StringComparison.OrdinalIgnoreCase) >= 0;
+                        string model = isLenovo ? version : name;
 
-                var _UBR = registryKey.GetValue("UBR").ToString();
-                var _CurrentBuild = registryKey.GetValue("CurrentBuild").ToString();
+                        // Fall back to the other field if the preferred one is empty
+                        if (model.Length == 0) model = isLenovo ? name : version;
 
-                string _version = _CurrentBuild + "." + _UBR;
-            */
+                        info.Model = model;
+                        info.Serial = serial;
+                        break;
+                    }
+                }
+            }
+            catch
+            {
+                info.Model = "";
+                info.Serial = "";
+            }
+        }
 
-            // Creates a string will all the above information and passes it as a variable for the clipboard
-            string copy = "PC Name: " + tBPCName.Text + "\nUsername: " + tBUsername.Text + "\nDevice Model: " + tBModel.Text + "\nSerial Number: " + tBSerial.Text + "\nWiFi: " + tBwifi.Text + "\nSignal Strength: " + tBSigStrn.Text + "\nLast System Boot: " + tBSysBoot.Text + "\nFree Disk Space (Gb): " + tBDiskspace.Text + "\nIP Addresses:\n" + ips;
-            return copy;
+        private static List<string> GetIPv4Addresses()
+        {
+            List<string> result = new List<string>();
+            try
+            {
+                foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+
+                    // Skip virtual switches / virtual machine adapters (Hyper-V, WSL, VMware, VirtualBox)
+                    string desc = (nic.Description ?? "") + " " + (nic.Name ?? "");
+                    if (desc.IndexOf("vEthernet", StringComparison.OrdinalIgnoreCase) >= 0
+                        || desc.IndexOf("Hyper-V", StringComparison.OrdinalIgnoreCase) >= 0
+                        || desc.IndexOf("VMware", StringComparison.OrdinalIgnoreCase) >= 0
+                        || desc.IndexOf("VirtualBox", StringComparison.OrdinalIgnoreCase) >= 0
+                        || desc.IndexOf("WSL", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        continue;
+                    }
+
+                    foreach (UnicastIPAddressInformation ua in nic.GetIPProperties().UnicastAddresses)
+                    {
+                        if (ua.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        {
+                            result.Add(ua.Address.ToString());
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // Fall back to the old DNS lookup if nothing was found
+            if (result.Count == 0)
+            {
+                try
+                {
+                    foreach (IPAddress address in Dns.GetHostAddresses(Dns.GetHostName()))
+                    {
+                        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        {
+                            result.Add(address.ToString());
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            return result;
+        }
+
+        private static void GetWifi(PcInfo info)
+        {
+            try
+            {
+                using (System.Diagnostics.Process p = new System.Diagnostics.Process())
+                {
+                    p.StartInfo.FileName = "netsh.exe";
+                    p.StartInfo.Arguments = "wlan show interfaces";
+                    p.StartInfo.UseShellExecute = false;
+                    p.StartInfo.CreateNoWindow = true;
+                    p.StartInfo.RedirectStandardOutput = true;
+                    p.Start();
+
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(5000);
+
+                    // Each line looks like "    SSID                   : MyNetwork".
+                    // Match whole labels so "BSSID" is not mistaken for "SSID".
+                    foreach (string rawLine in output.Split('\n'))
+                    {
+                        string line = rawLine.Trim();
+                        int colon = line.IndexOf(':');
+                        if (colon <= 0) continue;
+
+                        string label = line.Substring(0, colon).Trim();
+                        string value = line.Substring(colon + 1).Trim();
+
+                        if (info.Wifi.Length == 0 && label.Equals("SSID", StringComparison.OrdinalIgnoreCase))
+                        {
+                            info.Wifi = value;
+                        }
+                        else if (info.Signal.Length == 0 && label.Equals("Signal", StringComparison.OrdinalIgnoreCase))
+                        {
+                            info.Signal = value;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                info.Wifi = "";
+                info.Signal = "";
+            }
+        }
+
+        // Puts the gathered info into the form
+        private void ApplyInfo(PcInfo info)
+        {
+            tBPCName.Text = info.PcName;
+            tBUsername.Text = info.UserName;
+            tBModel.Text = info.Model;
+            tBSerial.Text = info.Serial;
+            tBSysBoot.Text = info.LastBoot;
+            tBwifi.Text = info.Wifi;
+            tBSigStrn.Text = info.Signal;
+            tBDiskspace.Text = info.DiskSpace;
+
+            // Clears and refills the IP List
+            lvIP.Clear();
+            lvIP.View = View.List;
+            foreach (string ip in info.IPs)
+            {
+                lvIP.Items.Add(ip);
+            }
+        }
+
+        // Creates a string with all the above information for the clipboard
+        private static string BuildCopyText(PcInfo info)
+        {
+            string ips = "";
+            foreach (string ip in info.IPs)
+            {
+                ips += ip + "\n";
+            }
+
+            return "PC Name: " + info.PcName
+                + "\nUsername: " + info.UserName
+                + "\nDevice Model: " + info.Model
+                + "\nSerial Number: " + info.Serial
+                + "\nWiFi: " + info.Wifi
+                + "\nSignal Strength: " + info.Signal
+                + "\nLast System Boot: " + info.LastBoot
+                + "\nFree Disk Space (Gb): " + info.DiskSpace
+                + "\nIP Addresses:\n" + ips;
         }
 
         private void l_Diskspace_Click(object sender, EventArgs e)
