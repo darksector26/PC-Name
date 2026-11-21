@@ -49,6 +49,9 @@ namespace PC_Name_2
             Version version = Assembly.GetExecutingAssembly().GetName().Version;
             this.lblVersion.Text = String.Format(this.lblVersion.Text, version.Major, version.Minor, version.Build, version.Revision);
 
+            // Start with focus on a button so the first text field isn't highlighted
+            ActiveControl = bCopy;
+
             await RefreshAsync();
         }
 

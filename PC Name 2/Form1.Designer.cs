@@ -152,6 +152,7 @@
             this.tBPCName.Location = new System.Drawing.Point(149, 19);
             this.tBPCName.Name = "tBPCName";
             this.tBPCName.ReadOnly = true;
+            this.tBPCName.TabStop = false;
             this.tBPCName.Size = new System.Drawing.Size(212, 23);
             this.tBPCName.TabIndex = 1;
             //
@@ -174,6 +175,7 @@
             this.tBUsername.Location = new System.Drawing.Point(149, 55);
             this.tBUsername.Name = "tBUsername";
             this.tBUsername.ReadOnly = true;
+            this.tBUsername.TabStop = false;
             this.tBUsername.Size = new System.Drawing.Size(212, 23);
             this.tBUsername.TabIndex = 3;
             //
@@ -196,6 +198,7 @@
             this.tBModel.Location = new System.Drawing.Point(149, 91);
             this.tBModel.Name = "tBModel";
             this.tBModel.ReadOnly = true;
+            this.tBModel.TabStop = false;
             this.tBModel.Size = new System.Drawing.Size(212, 23);
             this.tBModel.TabIndex = 5;
             //
@@ -218,6 +221,7 @@
             this.tBSerial.Location = new System.Drawing.Point(149, 127);
             this.tBSerial.Name = "tBSerial";
             this.tBSerial.ReadOnly = true;
+            this.tBSerial.TabStop = false;
             this.tBSerial.Size = new System.Drawing.Size(212, 23);
             this.tBSerial.TabIndex = 7;
             //
@@ -240,6 +244,7 @@
             this.tBwifi.Location = new System.Drawing.Point(149, 163);
             this.tBwifi.Name = "tBwifi";
             this.tBwifi.ReadOnly = true;
+            this.tBwifi.TabStop = false;
             this.tBwifi.Size = new System.Drawing.Size(212, 23);
             this.tBwifi.TabIndex = 9;
             //
@@ -262,6 +267,7 @@
             this.tBSigStrn.Location = new System.Drawing.Point(149, 199);
             this.tBSigStrn.Name = "tBSigStrn";
             this.tBSigStrn.ReadOnly = true;
+            this.tBSigStrn.TabStop = false;
             this.tBSigStrn.Size = new System.Drawing.Size(212, 23);
             this.tBSigStrn.TabIndex = 11;
             //
@@ -284,6 +290,7 @@
             this.tBSysBoot.Location = new System.Drawing.Point(149, 235);
             this.tBSysBoot.Name = "tBSysBoot";
             this.tBSysBoot.ReadOnly = true;
+            this.tBSysBoot.TabStop = false;
             this.tBSysBoot.Size = new System.Drawing.Size(212, 23);
             this.tBSysBoot.TabIndex = 13;
             //
@@ -306,6 +313,7 @@
             this.tBDiskspace.Location = new System.Drawing.Point(149, 271);
             this.tBDiskspace.Name = "tBDiskspace";
             this.tBDiskspace.ReadOnly = true;
+            this.tBDiskspace.TabStop = false;
             this.tBDiskspace.Size = new System.Drawing.Size(212, 23);
             this.tBDiskspace.TabIndex = 15;
             //
@@ -384,7 +392,6 @@
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ActiveControl = this.bCopy;
             this.BackColor = System.Drawing.Color.White;
             this.ClientSize = new System.Drawing.Size(380, 560);
             this.Controls.Add(this.tlpMain);
