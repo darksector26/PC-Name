@@ -180,18 +180,22 @@ namespace PC_Name_2
                     if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
                     if (nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
 
+                    IPInterfaceProperties props = nic.GetIPProperties();
+
                     // Skip virtual switches / virtual machine adapters (Hyper-V, WSL, VMware, VirtualBox)
+                    // unless they carry a default gateway, which means the PC's real network
+                    // connection goes through them (e.g. a bridged Hyper-V external switch).
                     string desc = (nic.Description ?? "") + " " + (nic.Name ?? "");
-                    if (desc.IndexOf("vEthernet", StringComparison.OrdinalIgnoreCase) >= 0
+                    bool looksVirtual = desc.IndexOf("vEthernet", StringComparison.OrdinalIgnoreCase) >= 0
                         || desc.IndexOf("Hyper-V", StringComparison.OrdinalIgnoreCase) >= 0
                         || desc.IndexOf("VMware", StringComparison.OrdinalIgnoreCase) >= 0
                         || desc.IndexOf("VirtualBox", StringComparison.OrdinalIgnoreCase) >= 0
-                        || desc.IndexOf("WSL", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        continue;
-                    }
+                        || desc.IndexOf("WSL", StringComparison.OrdinalIgnoreCase) >= 0;
+                    bool hasGateway = props.GatewayAddresses.Any(g => g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                        && !g.Address.Equals(IPAddress.Any));
+                    if (looksVirtual && !hasGateway) continue;
 
-                    foreach (UnicastIPAddressInformation ua in nic.GetIPProperties().UnicastAddresses)
+                    foreach (UnicastIPAddressInformation ua in props.UnicastAddresses)
                     {
                         if (ua.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
                         {
